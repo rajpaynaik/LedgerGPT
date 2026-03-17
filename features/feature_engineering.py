@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 # Ordered list of feature columns fed to the ML model
 FEATURE_COLUMNS = [
-    # Sentiment
+    # Sentiment — scores
     "twitter_sentiment",
     "reddit_sentiment",
     "news_sentiment",
@@ -29,11 +29,18 @@ FEATURE_COLUMNS = [
     "bullish_ratio",
     "bearish_ratio",
     "sentiment_momentum",
+    "sentiment_velocity",    # rate of sentiment change per hour
     "avg_confidence",
+    # Sentiment — volume / frequency
     "tweet_count",
     "reddit_count",
     "news_count",
     "high_urgency_count",
+    "sentiment_volume",      # total mention count across all sources
+    # Event binary flags (from SEC EDGAR / earnings transcripts)
+    "earnings_event",        # 1 if earnings announcement in window
+    "ma_event",              # 1 if M&A event in window
+    "regulatory_event",      # 1 if regulatory / legal event in window
     # Technical
     "rsi_14",
     "macd",

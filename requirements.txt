@@ -34,6 +34,8 @@ lightgbm==4.3.0
 scikit-learn==1.4.2
 shap==0.45.0
 optuna==3.6.1
+celery[redis]==5.3.6
+flower==2.0.1                  # Celery monitoring UI
 
 # ── Data & Feature Engineering ───────────────────────────────────────────────
 pandas==2.2.2
