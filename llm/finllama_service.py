@@ -5,11 +5,13 @@ FinLLaMA inference service.
 Loads the model once and exposes async-friendly inference methods.
 Uses 4-bit quantisation (bitsandbytes) to fit on a single GPU.
 """
+import hashlib
 import json
 import re
 import threading
 from typing import Any
 
+import redis
 import structlog
 import torch
 from transformers import (
@@ -30,6 +32,8 @@ from .prompts import (
 logger = structlog.get_logger(__name__)
 
 _LOAD_LOCK = threading.Lock()
+_CACHE_TTL_SEC = 3600   # LLM outputs cached for 1 hour
+_CACHE_PREFIX  = "llm_cache:"
 
 
 class FinLLaMAService:
@@ -46,6 +50,15 @@ class FinLLaMAService:
         self.tokenizer = None
         self._pipe = None
         self._loaded = False
+        # Redis cache — gracefully disabled if Redis is unavailable
+        self._cache: redis.Redis | None = None
+        try:
+            self._cache = redis.from_url(self.settings.redis_url, decode_responses=True)
+            self._cache.ping()
+            logger.info("llm_cache_connected")
+        except Exception:
+            logger.warning("llm_cache_unavailable_caching_disabled")
+            self._cache = None
 
     @classmethod
     def get_instance(cls) -> "FinLLaMAService":
@@ -98,6 +111,35 @@ class FinLLaMAService:
         self._loaded = True
         logger.info("finllama_loaded")
 
+    # ── Cache helpers ───────────────────────────────────────────────────────
+    def _cache_key(self, task: str, text: str) -> str:
+        digest = hashlib.sha256(text.encode()).hexdigest()[:24]
+        return f"{_CACHE_PREFIX}{task}:{digest}"
+
+    def _cache_get(self, task: str, text: str) -> dict | list | None:
+        if self._cache is None:
+            return None
+        try:
+            raw = self._cache.get(self._cache_key(task, text))
+            if raw:
+                logger.debug("llm_cache_hit", task=task)
+                return json.loads(raw)
+        except Exception:
+            pass
+        return None
+
+    def _cache_set(self, task: str, text: str, value: dict | list) -> None:
+        if self._cache is None:
+            return
+        try:
+            self._cache.setex(
+                self._cache_key(task, text),
+                _CACHE_TTL_SEC,
+                json.dumps(value),
+            )
+        except Exception:
+            pass
+
     # ── Low-level generation ────────────────────────────────────────────────
     def _generate(self, prompt: str) -> str:
         if not self._loaded:
@@ -125,6 +167,7 @@ class FinLLaMAService:
     def analyse_sentiment(self, text: str) -> dict:
         """
         Returns structured sentiment for a single piece of financial text.
+        Results are cached in Redis for _CACHE_TTL_SEC seconds.
 
         Example output:
             {
@@ -135,11 +178,14 @@ class FinLLaMAService:
                 "reason": "positive delivery expectations"
             }
         """
+        cached = self._cache_get("sentiment", text)
+        if cached:
+            return cached
+
         prompt = build_sentiment_prompt(text)
         raw = self._generate(prompt)
         result = self._extract_json(raw)
-        # Normalise and validate
-        return {
+        output = {
             "ticker": result.get("ticker"),
             "sentiment": result.get("sentiment", "neutral"),
             "confidence": float(result.get("confidence", 0.5)),
@@ -147,26 +193,38 @@ class FinLLaMAService:
             "reason": result.get("reason", ""),
             "raw_text": text[:200],
         }
+        self._cache_set("sentiment", text, output)
+        return output
 
     def extract_tickers(self, text: str) -> list[str]:
         """Extract stock ticker symbols from text."""
+        cached = self._cache_get("tickers", text)
+        if cached is not None:
+            return cached
+
         prompt = build_ticker_prompt(text)
         raw = self._generate(prompt)
         tickers = self._extract_json(raw)
-        if isinstance(tickers, list):
-            return [str(t).upper() for t in tickers if t]
-        return []
+        output = [str(t).upper() for t in tickers if t] if isinstance(tickers, list) else []
+        self._cache_set("tickers", text, output)
+        return output
 
     def classify_event(self, text: str) -> dict:
         """Classify the market event type in text."""
+        cached = self._cache_get("event", text)
+        if cached:
+            return cached
+
         prompt = build_event_prompt(text)
         raw = self._generate(prompt)
         result = self._extract_json(raw)
-        return {
+        output = {
             "event_type": result.get("event_type", "general_news"),
             "urgency": result.get("urgency", "low"),
             "affected_sectors": result.get("affected_sectors", []),
         }
+        self._cache_set("event", text, output)
+        return output
 
     def analyse_batch(self, texts: list[str]) -> list[dict]:
         """Analyse sentiment for a batch of texts (more efficient)."""

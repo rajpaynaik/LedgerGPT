@@ -118,6 +118,22 @@ class SentimentAggregator:
         older = [r["_score"] for r in filtered if r["_ts"] < half]
         momentum = (np.mean(recent) if recent else 0.0) - (np.mean(older) if older else 0.0)
 
+        # ── New features from MD spec ────────────────────────────────────
+        # Sentiment velocity: rate of change per hour (momentum normalised by time)
+        time_span_hours = max((as_of - cutoff).total_seconds() / 3600, 1.0)
+        sentiment_velocity = momentum / (time_span_hours / 2)
+
+        # Sentiment volume: total mention count across all sources
+        sentiment_volume = len(filtered)
+
+        # Event binary flags derived from event_type field on records
+        def has_event(event_type: str) -> int:
+            return int(any(r.get("event_type") == event_type for r in filtered))
+
+        earnings_event    = has_event("earnings_event")
+        ma_event          = has_event("ma_event")
+        regulatory_event  = has_event("regulatory_event")
+
         return {
             "ticker": ticker,
             "twitter_sentiment": avg_score(by_source["twitter"]),
@@ -132,6 +148,12 @@ class SentimentAggregator:
             "bullish_ratio": bullish_ratio(filtered),
             "bearish_ratio": bearish_ratio(filtered),
             "sentiment_momentum": float(momentum),
+            # New features
+            "sentiment_velocity": float(np.clip(sentiment_velocity, -1.0, 1.0)),
+            "sentiment_volume": sentiment_volume,
+            "earnings_event": earnings_event,
+            "ma_event": ma_event,
+            "regulatory_event": regulatory_event,
             "as_of": as_of.isoformat(),
         }
 
@@ -179,5 +201,10 @@ class SentimentAggregator:
             "bullish_ratio": 0.0,
             "bearish_ratio": 0.0,
             "sentiment_momentum": 0.0,
+            "sentiment_velocity": 0.0,
+            "sentiment_volume": 0,
+            "earnings_event": 0,
+            "ma_event": 0,
+            "regulatory_event": 0,
             "as_of": as_of.isoformat(),
         }
