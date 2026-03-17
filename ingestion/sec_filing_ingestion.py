@@ -3,6 +3,8 @@ SEC EDGAR filing ingestion — 10-K, 10-Q, 8-K.
 Uses the free EDGAR full-text search API (no key required).
 Publishes structured filing events to Kafka.
 """
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime, timezone
 from typing import Any

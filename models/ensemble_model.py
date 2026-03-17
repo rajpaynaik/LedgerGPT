@@ -2,6 +2,8 @@
 Ensemble signal model: XGBoost + LightGBM + Random Forest with soft voting.
 Produces more robust signals than any single model, especially at distribution shift.
 """
+from __future__ import annotations
+
 import pickle
 from pathlib import Path
 from typing import Any
