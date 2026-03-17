@@ -1,0 +1,37 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  json:
+    (): structlog.stdlib.ProcessorFormatter
+    processor: structlog.dev.ConsoleRenderer
+    foreign_pre_chain:
+      - structlog.contextvars.merge_contextvars
+      - structlog.stdlib.add_log_level
+      - structlog.stdlib.add_logger_name
+      - structlog.processors.TimeStamper(fmt="iso")
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: json
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: json
+    filename: logs/ledgergpt.log
+    maxBytes: 10485760   # 10 MB
+    backupCount: 5
+
+root:
+  level: INFO
+  handlers: [console, file]
+
+loggers:
+  uvicorn:
+    level: WARNING
+  sqlalchemy.engine:
+    level: WARNING
+  kafka:
+    level: WARNING
