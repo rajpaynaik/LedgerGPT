@@ -4,6 +4,8 @@ Sources: Seeking Alpha RSS (free), Motley Fool Transcripts RSS,
          and a fallback scraper for public SEC 8-K exhibits.
 Publishes transcript chunks to Kafka for LLM processing.
 """
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import re

@@ -13,6 +13,8 @@ Weights match the original LedgerGPT spec:
   Sentiment    12%
   Volatility    8%
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
